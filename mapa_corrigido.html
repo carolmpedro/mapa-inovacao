@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa de Projetos de Inovação — Brasil</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',Arial,sans-serif; background:#f4f2ed; display:flex; flex-direction:column; align-items:center; padding:28px 16px; min-height:100vh; }
+.page { background:#fff; width:960px; max-width:100%; padding:28px 30px 20px; box-shadow:0 2px 20px rgba(0,0,0,0.09); border:0.5px solid #ccc; border-radius:6px; }
+.titulo { font-size:16px; font-weight:700; color:#111; text-align:center; }
+.subtitulo { font-size:11px; color:#666; text-align:center; margin-top:4px; font-style:italic; }
+.status-bar { text-align:center; font-size:10px; margin-top:8px; padding:5px 10px; border-radius:4px; }
+.status-ok   { color:#0F6E56; background:#e1f5ee; }
+.status-err  { color:#993C1D; background:#faece7; }
+.status-load { color:#666; background:#f4f2ed; }
+.filtros-bar { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; align-items:center; justify-content:center; }
+.filtro-grupo { display:flex; align-items:center; gap:5px; }
+.filtro-label { font-size:10px; color:#888; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+.btn-filtro { font-size:10px; padding:3px 10px; border-radius:20px; border:1px solid #ccc; background:#fff; cursor:pointer; color:#555; transition:all .15s; }
+.btn-filtro.ativo { background:#1D9E75; color:#fff; border-color:#1D9E75; }
+.btn-filtro:hover:not(.ativo) { background:#f0f0f0; }
+.separador { width:1px; height:18px; background:#ddd; }
+.corpo { display:flex; gap:20px; margin-top:14px; align-items:flex-start; }
+.mapa-col { flex:1; min-width:0; }
+.legenda-col { width:230px; flex-shrink:0; }
+#map-svg { width:100%; background:#cde8f5; border:0.5px solid #a8cce0; border-radius:4px; display:none; }
+#loading-msg { padding:60px 20px; text-align:center; color:#888; font-size:13px; font-style:italic; }
+path.estado { stroke:#fff; stroke-width:0.5px; cursor:pointer; transition:opacity .12s; }
+path.estado:hover { opacity:0.72; stroke:#222; stroke-width:1.2px; }
+text.lbl { font-size:6px; font-weight:700; fill:#fff; text-anchor:middle; dominant-baseline:central; pointer-events:none; paint-order:stroke; stroke:rgba(0,0,0,0.45); stroke-width:2px; }
+.cat-select { width:100%; font-size:11px; margin-bottom:10px; padding:6px 8px; border-radius:6px; border:0.5px solid #ccc; background:#fff; color:#333; cursor:pointer; }
+.leg-titulo { font-size:11px; font-weight:700; color:#333; margin-bottom:7px; margin-top:2px; }
+.cls-item { display:flex; align-items:center; gap:7px; font-size:10px; color:#555; margin-bottom:5px; }
+.cls-sq { width:13px; height:13px; border-radius:2px; flex-shrink:0; border:0.5px solid rgba(0,0,0,0.12); }
+.rank { margin-top:12px; border-top:0.5px solid #e8e8e8; padding-top:10px; max-height:420px; overflow-y:auto; }
+.rank-h { font-size:10px; font-weight:700; color:#555; margin-bottom:6px; position:sticky; top:0; background:#fff; padding-bottom:4px; }
+.rk { font-size:10px; padding:5px 0; border-bottom:0.5px solid #f2f2f2; }
+.rk-nome { font-weight:600; color:#222; }
+.rk-uf { font-size:9px; color:#888; }
+.rk-hub { font-size:9px; color:#666; font-style:italic; margin-top:1px; }
+.badges { display:flex; gap:3px; margin-top:3px; flex-wrap:wrap; }
+.badge { font-size:8px; padding:1px 5px; border-radius:3px; font-weight:600; }
+.badge-presencial    { background:#e1f5ee; color:#0F6E56; }
+.badge-online        { background:#e6f1fb; color:#185FA5; }
+.badge-local         { background:#f1efe8; color:#5F5E5A; }
+.badge-nacional      { background:#faeeda; color:#854F0B; }
+.badge-internacional { background:#eeedfe; color:#534AB7; }
+#tooltip { position:fixed; display:none; pointer-events:none; z-index:9999; background:rgba(255,255,255,0.97); border:0.7px solid #bbb; border-radius:8px; padding:10px 14px; box-shadow:0 3px 14px rgba(0,0,0,0.13); max-width:250px; font-family:'Segoe UI',Arial,sans-serif; }
+#tt-estado { font-weight:700; font-size:12px; color:#111; margin-bottom:5px; }
+.tt-proj { font-size:10px; margin-bottom:4px; border-bottom:0.5px solid #f2f2f2; padding-bottom:4px; }
+.tt-proj:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+.tt-proj-nome { font-weight:600; color:#222; }
+.tt-proj-hub { font-size:9px; color:#888; font-style:italic; }
+#tt-vazio { font-size:10px; color:#aaa; font-style:italic; }
+.fonte { margin-top:14px; font-size:8px; color:#aaa; border-top:0.5px solid #eee; padding-top:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; }
+.btn-sheet { font-size:9px; padding:3px 10px; border-radius:4px; border:0.5px solid #ccc; background:#fff; cursor:pointer; color:#555; text-decoration:none; }
+.btn-sheet:hover { background:#f0f0f0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="titulo">Projetos de Inovação Tecnológica — Brasil</div>
+  <div class="subtitulo">Formação tech, hubs de inovação e fomento público · Projeto Documentário</div>
+  <div id="status-bar" class="status-bar status-load">Carregando dados da planilha…</div>
+
+  <div class="filtros-bar">
+    <div class="filtro-grupo">
+      <span class="filtro-label">Modalidade</span>
+      <button class="btn-filtro ativo" data-filtro="modalidade" data-val="todos">Todos</button>
+      <button class="btn-filtro" data-filtro="modalidade" data-val="presencial">Presencial</button>
+      <button class="btn-filtro" data-filtro="modalidade" data-val="online">Online</button>
+    </div>
+    <div class="separador"></div>
+    <div class="filtro-grupo">
+      <span class="filtro-label">Abrangência</span>
+      <button class="btn-filtro ativo" data-filtro="abrangencia" data-val="todos">Todos</button>
+      <button class="btn-filtro" data-filtro="abrangencia" data-val="local">Local</button>
+      <button class="btn-filtro" data-filtro="abrangencia" data-val="nacional">Nacional</button>
+      <button class="btn-filtro" data-filtro="abrangencia" data-val="internacional">Internacional</button>
+    </div>
+  </div>
+
+  <div class="corpo">
+    <div class="mapa-col">
+      <div id="loading-msg">Carregando mapa…</div>
+      <svg id="map-svg"></svg>
+    </div>
+    <div class="legenda-col">
+      <select class="cat-select" id="cat-select"><option value="">Carregando categorias…</option></select>
+      <div class="leg-titulo">Legenda</div>
+      <div class="cls-item"><div class="cls-sq" id="cor-com" style="background:#1D9E75"></div>Com projeto mapeado</div>
+      <div class="cls-item"><div class="cls-sq" style="background:#B4B2A9"></div>Sem dado mapeado</div>
+      <div class="rank">
+        <div class="rank-h" id="rank-titulo">Projetos</div>
+        <div id="rank-lista"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fonte">
+    <span>Fonte: Natural Earth / datamaps · Dados: Google Sheets (atualiza ao reabrir)</span>
+    <a class="btn-sheet" href="https://docs.google.com/spreadsheets/d/1kg-yKStf4O9cTeqldgTyw4qGUzyupziUKsRCq91EXa4/edit" target="_blank">✏️ Abrir planilha</a>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div id="tt-estado"></div>
+  <div id="tt-lista"></div>
+  <div id="tt-vazio"></div>
+</div>
+
+<script>
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRxavjswh-xvz_clrXtzBKpnave38j04G2yUkdcRdt3tr2W8_0i3GheTHNLVnjDZ2t8UHxOfQvAQCU/pub?gid=0&single=true&output=csv';
+
+const CORES = ['#1D9E75','#534AB7','#BA7517','#D85A30','#185FA5','#993556','#3B6D11'];
+
+const ABREV = {
+  "Rondonia":"RO","Acre":"AC","Amazonas":"AM","Roraima":"RR","Para":"PA","Amapa":"AP",
+  "Tocantins":"TO","Maranhao":"MA","Piaui":"PI","Ceara":"CE","Rio Grande do Norte":"RN",
+  "Paraiba":"PB","Pernambuco":"PE","Alagoas":"AL","Sergipe":"SE","Bahia":"BA",
+  "Minas Gerais":"MG","Espirito Santo":"ES","Rio de Janeiro":"RJ","Sao Paulo":"SP",
+  "Parana":"PR","Santa Catarina":"SC","Rio Grande do Sul":"RS","Mato Grosso do Sul":"MS",
+  "Mato Grosso":"MT","Goias":"GO","Distrito Federal":"DF",
+  "Rondônia":"RO","Pará":"PA","Amapá":"AP","Piauí":"PI","Ceará":"CE",
+  "Paraíba":"PB","Espírito Santo":"ES","São Paulo":"SP","Paraná":"PR","Goiás":"GO"
+};
+
+function norm(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+function getUF(name){
+  if(!name) return null;
+  if(ABREV[name]) return ABREV[name];
+  const n=norm(name);
+  for(const [k,v] of Object.entries(ABREV)){ if(norm(k)===n) return v; }
+  return null;
+}
+
+function parseCSV(text){
+  const lines = text.trim().split('\n');
+  if(lines.length < 2) return [];
+  const cols = lines[0].split(',').map(c => c.replace(/^"|"$/g,'').toLowerCase().trim());
+  return lines.slice(1).map(line => {
+    const vals = [];
+    let cur = '', inQ = false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'){ inQ=!inQ; } else if(line[i]===','&&!inQ){ vals.push(cur); cur=''; } else { cur+=line[i]; }
+    }
+    vals.push(cur);
+    const obj = {};
+    cols.forEach((c,i) => { obj[c] = (vals[i]||'').replace(/^"|"$/g,'').trim(); });
+    return obj;
+  }).filter(r => r.uf && r.nome);
+}
+
+let todosOsProjetos=[], categoriasMap={}, catAtual='';
+let filtroModalidade='todos', filtroAbrangencia='todos';
+let geoFeatures=[], pathFn;
+const svgW=560, svgH=600;
+
+function buildCategorias(proj){
+  const cats={};
+  proj.forEach(p=>{ const c=p.categoria||'Sem categoria'; if(!cats[c]) cats[c]=[]; cats[c].push(p); });
+  const map={};
+  Object.keys(cats).sort().forEach((k,i)=>{ map[k]={label:k, cor:CORES[i%CORES.length], projetos:cats[k]}; });
+  return map;
+}
+
+function popularSelect(cats){
+  const sel=document.getElementById('cat-select');
+  sel.innerHTML='';
+  Object.keys(cats).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); });
+  catAtual=Object.keys(cats)[0]||'';
+}
+
+function projetosVisiveis(){
+  if(!categoriasMap[catAtual]) return [];
+  return categoriasMap[catAtual].projetos.filter(p=>{
+    const okM=filtroModalidade==='todos'||(p.modalidade||'').toLowerCase()===filtroModalidade;
+    const okA=filtroAbrangencia==='todos'||(p.abrangencia||'').toLowerCase()===filtroAbrangencia;
+    return okM&&okA;
+  });
+}
+
+function projetosPorUF(){
+  const map={};
+  projetosVisiveis().forEach(p=>{ const u=(p.uf||'').toUpperCase(); if(!map[u]) map[u]=[]; map[u].push(p); });
+  return map;
+}
+
+function corAtual(){ return (categoriasMap[catAtual]||{}).cor||'#1D9E75'; }
+
+function badgeHtml(p){
+  const mod=(p.modalidade||'').toLowerCase(), abr=(p.abrangencia||'').toLowerCase();
+  let b='';
+  if(mod==='presencial') b+='<span class="badge badge-presencial">presencial</span>';
+  else if(mod==='online') b+='<span class="badge badge-online">online</span>';
+  if(abr==='local') b+='<span class="badge badge-local">local</span>';
+  else if(abr==='nacional') b+='<span class="badge badge-nacional">nacional</span>';
+  else if(abr==='internacional') b+='<span class="badge badge-internacional">internacional</span>';
+  return b;
+}
+
+function atualizarMapa(){
+  if(!geoFeatures.length) return;
+  const mapa=projetosPorUF(), cor=corAtual();
+  document.getElementById('cor-com').style.background=cor;
+  d3.select('#map-svg').selectAll('path.estado').attr('fill',d=>{
+    const n=d.properties&&(d.properties.name||d.properties.NAME);
+    const uf=getUF(n);
+    return (uf&&mapa[uf]&&mapa[uf].length)?cor:'#B4B2A9';
+  });
+  atualizarRank();
+}
+
+function atualizarRank(){
+  const vis=projetosVisiveis();
+  document.getElementById('rank-titulo').textContent='Projetos visíveis ('+vis.length+')';
+  document.getElementById('rank-lista').innerHTML=vis.length
+    ? vis.map(p=>`<div class="rk"><div class="rk-nome">${p.nome} <span class="rk-uf">(${(p.uf||'').toUpperCase()})</span></div><div class="rk-hub">${p.hub||''}</div><div class="badges">${badgeHtml(p)}</div></div>`).join('')
+    : '<div style="font-size:10px;color:#aaa;font-style:italic;padding:6px 0">Nenhum projeto com esses filtros.</div>';
+}
+
+function inicializarMapa(topo){
+  document.getElementById('loading-msg').style.display='none';
+  document.getElementById('map-svg').style.display='block';
+  geoFeatures=topojson.feature(topo,topo.objects.bra).features;
+  const proj=d3.geoMercator().center([-54,-15]).scale(800).translate([svgW/2,svgH/2]);
+  pathFn=d3.geoPath().projection(proj);
+  const svg=d3.select('#map-svg').attr('viewBox','0 0 '+svgW+' '+svgH).attr('height',svgH);
+  const mapa=projetosPorUF(), cor=corAtual();
+
+  svg.selectAll('path.estado').data(geoFeatures).join('path')
+    .attr('class','estado').attr('d',pathFn)
+    .attr('fill',d=>{ const n=d.properties&&(d.properties.name||d.properties.NAME); const u=getUF(n); return (u&&mapa[u]&&mapa[u].length)?cor:'#B4B2A9'; })
+    .on('mousemove',function(event,d){
+      const name=d.properties&&(d.properties.name||d.properties.NAME);
+      const uf=getUF(name);
+      const m=projetosPorUF();
+      const lista=(uf&&m[uf])?m[uf]:[];
+      document.getElementById('tt-estado').textContent=(name||'')+(uf?' ('+uf+')':'');
+      if(lista.length){
+        document.getElementById('tt-lista').innerHTML=lista.map(p=>`<div class="tt-proj"><div class="tt-proj-nome">${p.nome}</div><div class="tt-proj-hub">${p.hub||''}</div><div class="badges" style="margin-top:2px">${badgeHtml(p)}</div></div>`).join('');
+        document.getElementById('tt-vazio').textContent='';
+      } else {
+        document.getElementById('tt-lista').innerHTML='';
+        document.getElementById('tt-vazio').textContent='Sem projeto mapeado nesta categoria.';
+      }
+      const tt=document.getElementById('tooltip');
+      tt.style.display='block';
+      tt.style.left=(event.clientX+16)+'px';
+      tt.style.top=Math.max(10,event.clientY-20)+'px';
+    })
+    .on('mouseleave',()=>{ document.getElementById('tooltip').style.display='none'; });
+
+  svg.selectAll('text.lbl').data(geoFeatures).join('text')
+    .attr('class','lbl')
+    .attr('x',d=>pathFn.centroid(d)[0])
+    .attr('y',d=>pathFn.centroid(d)[1])
+    .text(d=>{ const n=d.properties&&(d.properties.name||d.properties.NAME); return getUF(n)||''; });
+
+  atualizarRank();
+}
+
+async function carregarDados(){
+  const status=document.getElementById('status-bar');
+  try {
+    const r = await fetch(CSV_URL);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const text = await r.text();
+    todosOsProjetos = parseCSV(text);
+    if(!todosOsProjetos.length) throw new Error('Planilha sem dados. Verifique se as colunas estão corretas: uf, nome, hub, categoria, modalidade, abrangencia');
+    categoriasMap = buildCategorias(todosOsProjetos);
+    popularSelect(categoriasMap);
+    status.className='status-bar status-ok';
+    status.textContent='✓ '+todosOsProjetos.length+' projetos carregados · Atualiza ao reabrir';
+    atualizarMapa();
+  } catch(e){
+    status.className='status-bar status-err';
+    status.textContent='⚠ Erro: '+e.message;
+    console.error(e);
+  }
+}
+
+document.getElementById('cat-select').addEventListener('change',function(){ catAtual=this.value; atualizarMapa(); });
+document.querySelectorAll('.btn-filtro').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    const g=this.dataset.filtro;
+    document.querySelectorAll('.btn-filtro[data-filtro="'+g+'"]').forEach(b=>b.classList.remove('ativo'));
+    this.classList.add('ativo');
+    if(g==='modalidade') filtroModalidade=this.dataset.val;
+    if(g==='abrangencia') filtroAbrangencia=this.dataset.val;
+    atualizarMapa();
+  });
+});
+
+Promise.all([
+  d3.json('https://cdn.jsdelivr.net/npm/datamaps@0.5.10/src/js/data/bra.topo.json'),
+  carregarDados()
+]).then(([topo])=>{ inicializarMapa(topo); })
+  .catch(err=>{ document.getElementById('loading-msg').textContent='Erro ao carregar mapa: '+err.message; });
+</script>
+</body>
+</html>
